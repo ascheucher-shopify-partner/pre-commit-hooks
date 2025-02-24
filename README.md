@@ -4,6 +4,23 @@ A fork of to support Shopify theme .json files formatting.
 
 **Very likely this is not needed anymore.**
 
+REASON: Shopify formats empty objects like everybody else now:
+
+```JSON
+{
+    "empty-key" : {}
+}
+```
+
+before, which needed the extension:
+
+```JSON
+{
+    "empty-key" : {        
+    }
+}
+```
+
 ## project status
 
 ## Build Status
