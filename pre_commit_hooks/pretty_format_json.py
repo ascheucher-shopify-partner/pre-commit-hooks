@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Mapping
 from collections.abc import Sequence
 from difflib import unified_diff
+
+
+def _insert_linebreaks(json_str: str) -> str:
+    return re.sub(
+        r'\n(?P<spaces>\s*)(?P<json_key>.*): {}(?P<delim>,??)',
+        '\n\\g<spaces>\\g<json_key>: {\n\\g<spaces>}\\g<delim>',
+        json_str,
+    )
 
 
 def _get_pretty_format(
@@ -14,6 +23,7 @@ def _get_pretty_format(
         ensure_ascii: bool = True,
         sort_keys: bool = True,
         top_keys: Sequence[str] = (),
+        empty_object_with_newline: bool = False,
 ) -> str:
     def pairs_first(pairs: Sequence[tuple[str, str]]) -> Mapping[str, str]:
         before = [pair for pair in pairs if pair[0] in top_keys]
@@ -27,6 +37,8 @@ def _get_pretty_format(
         indent=indent,
         ensure_ascii=ensure_ascii,
     )
+    if empty_object_with_newline:
+        json_pretty = _insert_linebreaks(json_pretty)
     return f'{json_pretty}\n'
 
 
@@ -96,6 +108,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help='Ordered list of keys to keep at the top of JSON hashes',
     )
+    parser.add_argument(
+        '--empty-object-with-newline',
+        action='store_true',
+        dest='empty_object_with_newline',
+        default=False,
+        help='Format empty JSON objects to have a linebreak, ' +
+        'also activates --no-sort-keys',
+    )
     parser.add_argument('filenames', nargs='*', help='Filenames to fix')
     args = parser.parse_args(argv)
 
@@ -106,9 +126,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             contents = f.read()
 
         try:
+            if args.empty_object_with_newline:
+                args.no_sort_keys = True
             pretty_contents = _get_pretty_format(
                 contents, args.indent, ensure_ascii=not args.no_ensure_ascii,
                 sort_keys=not args.no_sort_keys, top_keys=args.top_keys,
+                empty_object_with_newline=args.empty_object_with_newline,
             )
         except ValueError:
             print(
@@ -120,6 +143,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             if contents != pretty_contents:
                 if args.autofix:
                     _autofix(json_file, pretty_contents)
+                    if args.empty_object_with_newline:
+                        # When using --empty-object-with-newline with --autofix,
+                        # we want to return success after fixing
+                        status = 0
+                    else:
+                        status = 1
                 else:
                     diff_output = get_diff(
                         contents,
@@ -127,8 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         json_file,
                     )
                     sys.stdout.buffer.write(diff_output.encode())
-
-                status = 1
+                    status = 1
 
     return status
 
